@@ -22,4 +22,5 @@ export interface AppSettings {
   audioQuality: 'high' | 'medium' | 'low';
   storageLocation: string;
   darkMode: boolean;
+  appVisible: boolean;
 }

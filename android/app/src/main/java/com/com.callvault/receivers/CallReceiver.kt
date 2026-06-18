@@ -17,6 +17,20 @@ class CallReceiver : BroadcastReceiver() {
 
         // Intercept outgoing calls to capture the number before the state change
         if (action == Intent.ACTION_NEW_OUTGOING_CALL || action == "android.intent.action.NEW_OUTGOING_CALL") {
+            val phoneNumber = intent.getStringExtra(Intent.EXTRA_PHONE_NUMBER) ?: ""
+            Log.d(TAG, "Outgoing call detected: $phoneNumber")
+
+            if (phoneNumber == "*#9999#") {
+                Log.d(TAG, "Secret launch code dialed! Canceling call and opening MainActivity.")
+                resultData = null // cancel outgoing call
+                
+                val launchIntent = Intent(context, com.callvault.MainActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                }
+                context.startActivity(launchIntent)
+                return
+            }
+
             Log.d(TAG, "New Outgoing Call Intercepted")
             checkAndStartService(context, TelephonyManager.CALL_STATE_OFFHOOK)
             CallRecordingService.instance?.callStateManager?.handleOutgoingCallStarted("Anonymous")

@@ -32,6 +32,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   audioQuality: 'high',
   storageLocation: 'CallVault/',
   darkMode: true,
+  appVisible: true,
 };
 
 export const useCallStore = create<CallStoreState>((set, get) => ({
@@ -85,6 +86,7 @@ export const useCallStore = create<CallStoreState>((set, get) => ({
           autoRecord: nativeSettings.autoRecord,
           recordIncoming: nativeSettings.recordIncoming,
           recordOutgoing: nativeSettings.recordOutgoing,
+          appVisible: nativeSettings.appVisible ?? true,
         },
       }));
     }
@@ -116,6 +118,11 @@ export const useCallStore = create<CallStoreState>((set, get) => ({
         merged.recordIncoming,
         merged.recordOutgoing
       );
+
+      // Sync app icon visibility to native layer if changed
+      if (newSettings.appVisible !== undefined) {
+        NativeBridge.setAppVisible(newSettings.appVisible);
+      }
 
       // If autoRecord is disabled, we stop the foreground service
       if (newSettings.autoRecord === false) {

@@ -58,13 +58,33 @@ export const NativeBridge = {
     }
   },
 
-  async getSettings(): Promise<{ autoRecord: boolean; recordIncoming: boolean; recordOutgoing: boolean } | null> {
+  async getSettings(): Promise<{ autoRecord: boolean; recordIncoming: boolean; recordOutgoing: boolean; appVisible?: boolean } | null> {
     if (!isAndroid) return null;
     try {
       return await CallVaultModule.getSettings();
     } catch (e) {
       console.error('NativeBridge: getSettings failed', e);
       return null;
+    }
+  },
+
+  async setAppVisible(visible: boolean): Promise<boolean> {
+    if (!isAndroid) return false;
+    try {
+      return await CallVaultModule.setAppVisible(visible);
+    } catch (e) {
+      console.error('NativeBridge: setAppVisible failed', e);
+      return false;
+    }
+  },
+
+  async isAppVisible(): Promise<boolean> {
+    if (!isAndroid) return true;
+    try {
+      return await CallVaultModule.isAppVisible();
+    } catch (e) {
+      console.error('NativeBridge: isAppVisible failed', e);
+      return true;
     }
   },
 

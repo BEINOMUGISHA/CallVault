@@ -97,10 +97,48 @@ class CallVaultModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
                 putBoolean("autoRecord", prefs.getBoolean("autoRecord", true))
                 putBoolean("recordIncoming", prefs.getBoolean("recordIncoming", true))
                 putBoolean("recordOutgoing", prefs.getBoolean("recordOutgoing", true))
+                putBoolean("appVisible", prefs.getBoolean("appVisible", true))
             }
             promise.resolve(map)
         } catch (e: Exception) {
             promise.reject("GET_SETTINGS_FAILED", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun setAppVisible(visible: Boolean, promise: Promise) {
+        try {
+            val context = reactApplicationContext
+            val packageManager = context.packageManager
+            val componentName = android.content.ComponentName(context, "com.callvault.MainActivityAlias")
+            val state = if (visible) {
+                android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            } else {
+                android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+            }
+            packageManager.setComponentEnabledSetting(
+                componentName,
+                state,
+                android.content.pm.PackageManager.DONT_KILL_APP
+            )
+            // Save state to Shared Preferences so we can query it
+            val prefs = context.getSharedPreferences("CallVaultSettings", Context.MODE_PRIVATE)
+            prefs.edit().putBoolean("appVisible", visible).apply()
+            promise.resolve(true)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting app visibility: ${e.message}", e)
+            promise.reject("SET_VISIBLE_FAILED", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun isAppVisible(promise: Promise) {
+        try {
+            val context = reactApplicationContext
+            val prefs = context.getSharedPreferences("CallVaultSettings", Context.MODE_PRIVATE)
+            promise.resolve(prefs.getBoolean("appVisible", true))
+        } catch (e: Exception) {
+            promise.reject("IS_VISIBLE_FAILED", e.message, e)
         }
     }
 

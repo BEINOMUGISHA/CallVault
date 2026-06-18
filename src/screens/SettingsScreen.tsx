@@ -32,6 +32,29 @@ export default function SettingsScreen({ navigation }: any) {
     Alert.alert('Quality Updated', `Audio compression adjusted to ${quality.toUpperCase()} mode.`);
   };
 
+  const handleToggleStealthMode = (hide: boolean) => {
+    if (hide) {
+      Alert.alert(
+        'Enable Stealth Mode?',
+        'This will hide CallVault\'s icon from your home screen and app drawer.\n\nTo open the app again, you must dial *#*#9999#*#* (or dial *#9999#) in your phone\'s keypad, or click the background service notification.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Hide App',
+            style: 'destructive',
+            onPress: () => {
+              updateSettings({ appVisible: false });
+              Alert.alert('App Hidden', 'The app icon has been hidden. Remember to dial *#*#9999#*#* to open CallVault.');
+            },
+          },
+        ]
+      );
+    } else {
+      updateSettings({ appVisible: true });
+      Alert.alert('App Restored', 'The app icon is now visible in the app drawer again.');
+    }
+  };
+
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -122,6 +145,23 @@ export default function SettingsScreen({ navigation }: any) {
             <Text style={styles.storageAlert}>
               ⚠️ Recordings are stored in private isolated app files to prevent other apps from reading them. They will be deleted if you uninstall the app.
             </Text>
+          </View>
+        </View>
+
+        {/* Section: Stealth Mode */}
+        <Text style={styles.sectionTitle}>App Stealth Mode</Text>
+        <View style={styles.groupCard}>
+          <View style={[styles.settingItem, styles.lastItem]}>
+            <View style={styles.settingTextGroup}>
+              <Text style={styles.settingLabel}>Hide Launcher Icon</Text>
+              <Text style={styles.settingDesc}>Remove the app icon from the system home screen</Text>
+            </View>
+            <Switch
+              value={!settings.appVisible}
+              onValueChange={(hide) => handleToggleStealthMode(hide)}
+              trackColor={{ false: '#334155', true: '#2563EB' }}
+              thumbColor={!settings.appVisible ? '#38BDF8' : '#94A3B8'}
+            />
           </View>
         </View>
 
