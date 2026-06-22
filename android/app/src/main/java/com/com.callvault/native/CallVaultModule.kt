@@ -2,6 +2,7 @@ package com.callvault.native
 
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.net.Uri
 import android.util.Log
@@ -297,6 +298,12 @@ class CallVaultModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
         try {
             stopAudioInternal()
             mediaPlayer = MediaPlayer().apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .build()
+                )
                 setDataSource(filePath)
                 prepare()
                 start()
@@ -393,38 +400,40 @@ class CallVaultModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
 
     @ReactMethod
     fun shareCallRecord(id: Double, promise: Promise) {
-        try {
-            val recordId = id.toLong()
-            val record = db.callRecordDao().getById(recordId)
-            if (record != null) {
-                val file = File(record.filePath)
-                if (file.exists()) {
-                    val context = reactApplicationContext
-                    val uri = FileProvider.getUriForFile(
-                        context,
-                        "${context.packageName}.fileprovider",
-                        file
-                    )
-                    val intent = Intent(Intent.ACTION_SEND).apply {
-                        type = "audio/*"
-                        putExtra(Intent.EXTRA_STREAM, uri)
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        coroutineScope.launch {
+            try {
+                val recordId = id.toLong()
+                val record = db.callRecordDao().getById(recordId)
+                if (record != null) {
+                    val file = File(record.filePath)
+                    if (file.exists()) {
+                        val context = reactApplicationContext
+                        val uri = FileProvider.getUriForFile(
+                            context,
+                            "${context.packageName}.fileprovider",
+                            file
+                        )
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "audio/*"
+                            putExtra(Intent.EXTRA_STREAM, uri)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        val chooser = Intent.createChooser(intent, "Share Call Recording").apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(chooser)
+                        promise.resolve(true)
+                    } else {
+                        promise.reject("FILE_NOT_FOUND", "Associated physical file does not exist.")
                     }
-                    val chooser = Intent.createChooser(intent, "Share Call Recording").apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    context.startActivity(chooser)
-                    promise.resolve(true)
                 } else {
-                    promise.reject("FILE_NOT_FOUND", "Associated physical file does not exist.")
+                    promise.reject("RECORD_NOT_FOUND", "Record not found.")
                 }
-            } else {
-                promise.reject("RECORD_NOT_FOUND", "Record not found.")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error sharing call record: ${e.message}", e)
+                promise.reject("SHARE_FAILED", e.message, e)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error sharing call record: ${e.message}", e)
-            promise.reject("SHARE_FAILED", e.message, e)
         }
     }
 }

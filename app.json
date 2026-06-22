@@ -1,4 +1,9 @@
 {
   "name": "CallVault",
-  "displayName": "CallVault"
+  "displayName": "CallVault",
+  "extra": {
+    "eas": {
+      "projectId": "7ce6f643-86a3-4b0c-8098-908ca7dda1aa"
+    }
+  }
 }

@@ -38,9 +38,9 @@ class RecordingManager(private val context: Context) {
             return null
         }
 
-        // Generate filename: YYYY-MM-DD_HH-mm-ss.mp3
+        // Generate filename: YYYY-MM-DD_HH-mm-ss.m4a
         val timestamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.getDefault()).format(Date())
-        val fileName = "${timestamp}.mp3"
+        val fileName = "${timestamp}.m4a"
         val file = File(directory, fileName)
         currentFilePath = file.absolutePath
         currentStartTime = System.currentTimeMillis()
