@@ -31,7 +31,7 @@ export default function AudioPlayerScreen({ route, navigation }: any) {
 
   const timerRef = useRef<any>(null);
 
-  const filename = record.filePath.split('/').pop() || 'Recording.m4a';
+  const filename = record.filePath.split('/').pop() || 'Recording.mp3';
 
   // Stop playback when leaving screen
   useEffect(() => {
