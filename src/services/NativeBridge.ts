@@ -217,4 +217,34 @@ export const NativeBridge = {
       return false;
     }
   },
+
+  async isIgnoringBatteryOptimizations(): Promise<boolean> {
+    if (!isAndroid) return true;
+    try {
+      return await CallVaultModule.isIgnoringBatteryOptimizations();
+    } catch (e) {
+      console.error('NativeBridge: isIgnoringBatteryOptimizations failed', e);
+      return true;
+    }
+  },
+
+  async requestIgnoreBatteryOptimizations(): Promise<boolean> {
+    if (!isAndroid) return false;
+    try {
+      return await CallVaultModule.requestIgnoreBatteryOptimizations();
+    } catch (e) {
+      console.error('NativeBridge: requestIgnoreBatteryOptimizations failed', e);
+      return false;
+    }
+  },
+
+  async openAutoStartSettings(): Promise<boolean> {
+    if (!isAndroid) return false;
+    try {
+      return await CallVaultModule.openAutoStartSettings();
+    } catch (e) {
+      console.error('NativeBridge: openAutoStartSettings failed', e);
+      return false;
+    }
+  },
 };

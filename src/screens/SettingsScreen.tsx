@@ -11,9 +11,44 @@ import {
 } from 'react-native';
 import { useCallStore } from '../store/useCallStore';
 import TabBar from '../components/TabBar';
+import { NativeBridge } from '../services/NativeBridge';
 
 export default function SettingsScreen({ navigation }: any) {
   const { settings, updateSettings, isServiceRunning, toggleService } = useCallStore();
+
+  const [isBatteryIgnored, setIsBatteryIgnored] = React.useState(true);
+
+  React.useEffect(() => {
+    checkBatteryOptimization();
+  }, []);
+
+  const checkBatteryOptimization = async () => {
+    const ignored = await NativeBridge.isIgnoringBatteryOptimizations();
+    setIsBatteryIgnored(ignored);
+  };
+
+  const handleRequestBatteryIgnore = async () => {
+    if (isBatteryIgnored) {
+      Alert.alert('Settings', 'Battery optimizations are already disabled for CallVault.');
+      return;
+    }
+    const success = await NativeBridge.requestIgnoreBatteryOptimizations();
+    if (success) {
+      // Re-check after a brief delay
+      setTimeout(checkBatteryOptimization, 2000);
+    }
+  };
+
+  const handleOpenAutoStart = async () => {
+    Alert.alert(
+      'Allow Auto-Start',
+      'Please ensure "Auto-Start" or "Background Activity" is allowed for CallVault in the settings page that opens.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Open Settings', onPress: () => NativeBridge.openAutoStartSettings() }
+      ]
+    );
+  };
 
   const handleToggleAutoRecord = (value: boolean) => {
     updateSettings({ autoRecord: value });
@@ -145,6 +180,41 @@ export default function SettingsScreen({ navigation }: any) {
             <Text style={styles.storageAlert}>
               ⚠️ Recordings are stored in private isolated app files to prevent other apps from reading them. They will be deleted if you uninstall the app.
             </Text>
+          </View>
+        </View>
+
+        {/* Section: Background Stability */}
+        <Text style={styles.sectionTitle}>Background Stability</Text>
+        <View style={styles.groupCard}>
+          <View style={styles.settingItem}>
+            <View style={styles.settingTextGroup}>
+              <Text style={styles.settingLabel}>Ignore Battery Optimizations</Text>
+              <Text style={styles.settingDesc}>
+                {isBatteryIgnored 
+                  ? 'Optimizations Disabled (Service is stable)' 
+                  : 'Highly recommended to prevent OS from killing recording'}
+              </Text>
+            </View>
+            <Switch
+              value={isBatteryIgnored}
+              onValueChange={handleRequestBatteryIgnore}
+              trackColor={{ false: '#334155', true: '#2563EB' }}
+              thumbColor={isBatteryIgnored ? '#38BDF8' : '#94A3B8'}
+              disabled={isBatteryIgnored}
+            />
+          </View>
+
+          <View style={[styles.settingItem, styles.lastItem]}>
+            <View style={styles.settingTextGroup}>
+              <Text style={styles.settingLabel}>Auto-Start & Background Settings</Text>
+              <Text style={styles.settingDesc}>Open manufacturer settings for background startup</Text>
+            </View>
+            <TouchableOpacity 
+              style={{ backgroundColor: '#2563EB', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}
+              onPress={handleOpenAutoStart}
+            >
+              <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>Manage</Text>
+            </TouchableOpacity>
           </View>
         </View>
 

@@ -5,6 +5,8 @@ import android.content.Intent
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.net.Uri
+import android.os.Build
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -434,6 +436,77 @@ class CallVaultModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
                 Log.e(TAG, "Error sharing call record: ${e.message}", e)
                 promise.reject("SHARE_FAILED", e.message, e)
             }
+        }
+    }
+
+    @ReactMethod
+    fun isIgnoringBatteryOptimizations(promise: Promise) {
+        try {
+            val pm = reactApplicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager
+            val packageName = reactApplicationContext.packageName
+            val ignoring = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                pm.isIgnoringBatteryOptimizations(packageName)
+            } else {
+                true
+            }
+            promise.resolve(ignoring)
+        } catch (e: Exception) {
+            promise.reject("BATTERY_ERROR", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun requestIgnoreBatteryOptimizations(promise: Promise) {
+        try {
+            val packageName = reactApplicationContext.packageName
+            val intent = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = Uri.parse("package:$packageName")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            reactApplicationContext.startActivity(intent)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("BATTERY_REQUEST_ERROR", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun openAutoStartSettings(promise: Promise) {
+        try {
+            val context = reactApplicationContext
+            val manufacturer = android.os.Build.MANUFACTURER.lowercase()
+            val intent = Intent()
+            val packageName = context.packageName
+
+            when (manufacturer) {
+                "xiaomi" -> intent.component = android.content.ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")
+                "oppo" -> intent.component = android.content.ComponentName("com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity")
+                "vivo" -> intent.component = android.content.ComponentName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity")
+                "huawei", "honor" -> intent.component = android.content.ComponentName("com.huawei.systemmanager", "com.huawei.systemmanager.optimize.process.ProtectActivity")
+                else -> {
+                    intent.action = android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS
+                    intent.data = Uri.parse("package:$packageName")
+                }
+            }
+
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+            // Resolve activity before launching
+            val pm = context.packageManager
+            if (intent.resolveActivity(pm) != null) {
+                context.startActivity(intent)
+                promise.resolve(true)
+            } else {
+                // Fallback to generic details page
+                val fallbackIntent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.parse("package:$packageName")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(fallbackIntent)
+                promise.resolve(true)
+            }
+        } catch (e: Exception) {
+            promise.reject("AUTO_START_ERROR", e.message, e)
         }
     }
 }
