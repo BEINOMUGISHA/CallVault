@@ -33,7 +33,7 @@ class CallReceiver : BroadcastReceiver() {
 
             Log.d(TAG, "New Outgoing Call Intercepted")
             checkAndStartService(context, TelephonyManager.CALL_STATE_OFFHOOK)
-            CallRecordingService.instance?.callStateManager?.handleOutgoingCallStarted("Anonymous")
+            CallRecordingService.instance?.callStateManager?.handleOutgoingCallStarted(phoneNumber)
             return
         }
 
@@ -49,11 +49,13 @@ class CallReceiver : BroadcastReceiver() {
                     else -> TelephonyManager.CALL_STATE_IDLE
                 }
 
+                val incomingNumber = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)
+
                 // If call is starting, make sure service is running
                 checkAndStartService(context, state)
 
                 // Pass the call state change to CallStateManager
-                CallRecordingService.instance?.callStateManager?.onCallStateChanged(state, "Anonymous")
+                CallRecordingService.instance?.callStateManager?.onCallStateChanged(state, incomingNumber)
             }
         }
     }

@@ -40,9 +40,9 @@ class CallStateManager(private val context: Context) {
      * Invoked when CallReceiver detects a new outgoing call.
      */
     fun handleOutgoingCallStarted(number: String) {
-        phoneNumber = "Anonymous"
+        phoneNumber = number.ifEmpty { "Anonymous" }
         isIncomingCall = false
-        Log.d(TAG, "Outgoing call detected (Anonymous)")
+        Log.d(TAG, "Outgoing call detected ($phoneNumber)")
     }
 
     /**
@@ -50,7 +50,9 @@ class CallStateManager(private val context: Context) {
      */
     fun onCallStateChanged(state: Int, number: String?) {
         Log.d(TAG, "onCallStateChanged: state=$state")
-        phoneNumber = "Anonymous"
+        if (!number.isNullOrEmpty()) {
+            phoneNumber = number
+        }
 
         if (state == lastCallState) {
             return

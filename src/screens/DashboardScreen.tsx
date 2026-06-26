@@ -46,17 +46,19 @@ export default function DashboardScreen({ navigation }: any) {
       const permissions = [
         PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
         PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE,
+        PermissionsAndroid.PERMISSIONS.READ_CALL_LOG,
       ];
 
       const results = await PermissionsAndroid.requestMultiple(permissions);
       
       const audioGranted = results[PermissionsAndroid.PERMISSIONS.RECORD_AUDIO] === PermissionsAndroid.RESULTS.GRANTED;
       const phoneGranted = results[PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE] === PermissionsAndroid.RESULTS.GRANTED;
+      const callLogGranted = results[PermissionsAndroid.PERMISSIONS.READ_CALL_LOG] === PermissionsAndroid.RESULTS.GRANTED;
 
-      if (!audioGranted || !phoneGranted) {
+      if (!audioGranted || !phoneGranted || !callLogGranted) {
         Alert.alert(
           'Permissions Required',
-          'CallVault needs Record Audio and Phone State permissions to automatically record calls in the background.',
+          'CallVault needs Record Audio, Phone State, and Call Log permissions to automatically record calls with numbers in the background.',
           [{ text: 'OK' }]
         );
       }
