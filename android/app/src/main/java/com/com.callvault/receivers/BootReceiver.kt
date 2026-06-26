@@ -14,7 +14,11 @@ class BootReceiver : BroadcastReceiver() {
         val action = intent.action
         Log.d(TAG, "BootReceiver received action: $action")
 
-        if (action == Intent.ACTION_BOOT_COMPLETED || action == "android.intent.action.BOOT_COMPLETED") {
+        if (action == Intent.ACTION_BOOT_COMPLETED || 
+            action == "android.intent.action.BOOT_COMPLETED" ||
+            action == "android.intent.action.QUICKBOOT_POWERON" ||
+            action == "com.htc.intent.action.QUICKBOOT_POWERON" ||
+            action == "android.intent.action.REBOOT") {
             // Read settings from Shared Preferences
             val prefs = context.getSharedPreferences("CallVaultSettings", Context.MODE_PRIVATE)
             val autoRecord = prefs.getBoolean("autoRecord", true)

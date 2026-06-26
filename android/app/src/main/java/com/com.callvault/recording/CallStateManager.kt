@@ -5,6 +5,7 @@ import android.telephony.TelephonyManager
 import android.util.Log
 import com.callvault.database.AppDatabase
 import com.callvault.database.CallRecordEntity
+import com.callvault.services.CallRecordingService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -82,6 +83,7 @@ class CallStateManager(private val context: Context) {
                     val filePath = recordingManager.startRecording(phoneNumber)
                     if (filePath != null) {
                         callActive = true
+                        CallRecordingService.instance?.updateForegroundServiceType(true)
                         callStartTime = System.currentTimeMillis() // start recording time
                         Log.d(TAG, "Call recording started at: $filePath")
                     } else {
@@ -110,6 +112,7 @@ class CallStateManager(private val context: Context) {
                         )
                     }
                     callActive = false
+                    CallRecordingService.instance?.updateForegroundServiceType(false)
                 } else if (lastCallState == TelephonyManager.CALL_STATE_RINGING) {
                     // Ringing then idle means missed call
                     Log.d(TAG, "Missed call detected (Anonymous)")
@@ -159,5 +162,9 @@ class CallStateManager(private val context: Context) {
                 Log.e(TAG, "Error saving call record to database: ${e.message}", e)
             }
         }
+    }
+
+    fun isRecordingActive(): Boolean {
+        return callActive
     }
 }
