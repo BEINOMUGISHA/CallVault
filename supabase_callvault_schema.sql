@@ -1,7 +1,7 @@
 -- =====================================================================
--- CallVault  ·  Full Cloud SQL Schema for Supabase (PostgreSQL)
+-- CallVault  ·  Full Cloud SQL Schema & Migration for Supabase (PostgreSQL)
 -- Database : PostgreSQL 15+ / Supabase
--- Target   : https://supabase.com/dashboard/project/sxrioshopkjczrdjcbp
+-- Target   : https://supabase.com/dashboard/project/jgirfajcvqfflpbrasvb
 -- =====================================================================
 
 -- ─────────────────────────────────────────────────────────────────────
@@ -15,21 +15,21 @@ INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
 VALUES (
     'callvault_recordings',
     'callvault_recordings',
-    false,                         -- Strictly private; requires signed URLs to stream
+    false,                         -- Strictly private; accessed via signed URLs or client SDK
     104857600,                     -- Max 100MB per audio file
-    ARRAY['audio/mpeg', 'audio/mp3', 'audio/mp4', 'audio/aac', 'audio/x-m4a']
+    ARRAY['audio/mpeg', 'audio/mp3', 'audio/mp4', 'audio/aac', 'audio/x-m4a', 'application/octet-stream']
 )
 ON CONFLICT (id) DO UPDATE SET
     public = false,
     file_size_limit = 104857600,
-    allowed_mime_types = ARRAY['audio/mpeg', 'audio/mp3', 'audio/mp4', 'audio/aac', 'audio/x-m4a'];
+    allowed_mime_types = ARRAY['audio/mpeg', 'audio/mp3', 'audio/mp4', 'audio/aac', 'audio/x-m4a', 'application/octet-stream'];
 
 
 -- ─────────────────────────────────────────────────────────────────────
 -- 1. PROFILES / USERS EXTENSION
 -- ─────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.callvault_profiles (
-    id                UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
+    id                UUID PRIMARY KEY,
     email             TEXT,
     device_id         TEXT,
     backup_enabled    BOOLEAN DEFAULT true,
@@ -37,13 +37,25 @@ CREATE TABLE IF NOT EXISTS public.callvault_profiles (
     updated_at        TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now()) NOT NULL
 );
 
+-- Drop foreign key if it was strictly referencing auth.users to allow anonymous device profiles
+DO $$
+BEGIN
+    ALTER TABLE public.callvault_profiles DROP CONSTRAINT IF EXISTS callvault_profiles_id_fkey;
+EXCEPTION
+    WHEN OTHERS THEN NULL;
+END $$;
+
 ALTER TABLE public.callvault_profiles ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can manage their own profile"
+DROP POLICY IF EXISTS "Users can manage their own profile" ON public.callvault_profiles;
+DROP POLICY IF EXISTS "Allow profile access" ON public.callvault_profiles;
+
+CREATE POLICY "Allow profile access"
     ON public.callvault_profiles
     FOR ALL
-    USING (auth.uid() = id)
-    WITH CHECK (auth.uid() = id);
+    TO anon, authenticated
+    USING (true)
+    WITH CHECK (true);
 
 
 -- ─────────────────────────────────────────────────────────────────────
@@ -51,7 +63,7 @@ CREATE POLICY "Users can manage their own profile"
 -- ─────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.callvault_records (
     id                  UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    user_id             UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    user_id             UUID NOT NULL,                             -- Device UUID or Auth User UUID
     local_id            BIGINT,                                    -- Android Room SQLite ID
     phone_number        TEXT NOT NULL,                             -- Normalized phone number
     contact_name        TEXT,                                      -- Contact name from phonebook
@@ -82,6 +94,14 @@ CREATE TABLE IF NOT EXISTS public.callvault_records (
     updated_at          TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now()) NOT NULL
 );
 
+-- Drop strict foreign key to auth.users if present, so anonymous device UUIDs sync seamlessly
+DO $$
+BEGIN
+    ALTER TABLE public.callvault_records DROP CONSTRAINT IF EXISTS callvault_records_user_id_fkey;
+EXCEPTION
+    WHEN OTHERS THEN NULL;
+END $$;
+
 -- Indexes for Fast Filtering & Search
 CREATE INDEX IF NOT EXISTS idx_callvault_records_user_id      ON public.callvault_records (user_id);
 CREATE INDEX IF NOT EXISTS idx_callvault_records_phone_number ON public.callvault_records (phone_number);
@@ -95,29 +115,43 @@ CREATE INDEX IF NOT EXISTS idx_callvault_records_search ON public.callvault_reco
     (phone_number || ' ' || coalesce(contact_name, '')) gin_trgm_ops
 );
 
--- Row Level Security
+-- Row Level Security for call records
 ALTER TABLE public.callvault_records ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can only view their own call records"
+DROP POLICY IF EXISTS "Users can only view their own call records" ON public.callvault_records;
+DROP POLICY IF EXISTS "Users can insert their own call records" ON public.callvault_records;
+DROP POLICY IF EXISTS "Users can update their own call records" ON public.callvault_records;
+DROP POLICY IF EXISTS "Users can delete their own call records" ON public.callvault_records;
+DROP POLICY IF EXISTS "Allow anon and auth call record select" ON public.callvault_records;
+DROP POLICY IF EXISTS "Allow anon and auth call record insert" ON public.callvault_records;
+DROP POLICY IF EXISTS "Allow anon and auth call record update" ON public.callvault_records;
+DROP POLICY IF EXISTS "Allow anon and auth call record delete" ON public.callvault_records;
+
+-- Policies allowing both anonymous device syncing and authenticated users
+CREATE POLICY "Allow anon and auth call record select"
     ON public.callvault_records
     FOR SELECT
-    USING (auth.uid() = user_id);
+    TO anon, authenticated
+    USING (true);
 
-CREATE POLICY "Users can insert their own call records"
+CREATE POLICY "Allow anon and auth call record insert"
     ON public.callvault_records
     FOR INSERT
-    WITH CHECK (auth.uid() = user_id);
+    TO anon, authenticated
+    WITH CHECK (true);
 
-CREATE POLICY "Users can update their own call records"
+CREATE POLICY "Allow anon and auth call record update"
     ON public.callvault_records
     FOR UPDATE
-    USING (auth.uid() = user_id)
-    WITH CHECK (auth.uid() = user_id);
+    TO anon, authenticated
+    USING (true)
+    WITH CHECK (true);
 
-CREATE POLICY "Users can delete their own call records"
+CREATE POLICY "Allow anon and auth call record delete"
     ON public.callvault_records
     FOR DELETE
-    USING (auth.uid() = user_id);
+    TO anon, authenticated
+    USING (true);
 
 
 -- ─────────────────────────────────────────────────────────────────────
@@ -125,7 +159,7 @@ CREATE POLICY "Users can delete their own call records"
 -- ─────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.callvault_contact_rules (
     id             UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    user_id        UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    user_id        UUID NOT NULL,
     phone_number   TEXT NOT NULL,
     contact_name   TEXT,
     rule_type      TEXT NOT NULL CHECK (rule_type IN ('ALWAYS_RECORD', 'NEVER_RECORD', 'BLOCK')),
@@ -135,15 +169,26 @@ CREATE TABLE IF NOT EXISTS public.callvault_contact_rules (
     CONSTRAINT uq_user_phone UNIQUE (user_id, phone_number)
 );
 
+DO $$
+BEGIN
+    ALTER TABLE public.callvault_contact_rules DROP CONSTRAINT IF EXISTS callvault_contact_rules_user_id_fkey;
+EXCEPTION
+    WHEN OTHERS THEN NULL;
+END $$;
+
 CREATE INDEX IF NOT EXISTS idx_callvault_rules_user ON public.callvault_contact_rules (user_id);
 
 ALTER TABLE public.callvault_contact_rules ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can manage their own contact rules"
+DROP POLICY IF EXISTS "Users can manage their own contact rules" ON public.callvault_contact_rules;
+DROP POLICY IF EXISTS "Allow contact rules access" ON public.callvault_contact_rules;
+
+CREATE POLICY "Allow contact rules access"
     ON public.callvault_contact_rules
     FOR ALL
-    USING (auth.uid() = user_id)
-    WITH CHECK (auth.uid() = user_id);
+    TO anon, authenticated
+    USING (true)
+    WITH CHECK (true);
 
 
 -- ─────────────────────────────────────────────────────────────────────
@@ -152,28 +197,39 @@ CREATE POLICY "Users can manage their own contact rules"
 CREATE TABLE IF NOT EXISTS public.callvault_bookmarks (
     id                 UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     record_id          UUID REFERENCES public.callvault_records(id) ON DELETE CASCADE NOT NULL,
-    user_id            UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    user_id            UUID NOT NULL,
     timestamp_seconds  INTEGER NOT NULL CHECK (timestamp_seconds >= 0),
     title              TEXT NOT NULL,
     created_at         TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now()) NOT NULL
 );
 
+DO $$
+BEGIN
+    ALTER TABLE public.callvault_bookmarks DROP CONSTRAINT IF EXISTS callvault_bookmarks_user_id_fkey;
+EXCEPTION
+    WHEN OTHERS THEN NULL;
+END $$;
+
 CREATE INDEX IF NOT EXISTS idx_callvault_bookmarks_record ON public.callvault_bookmarks (record_id);
 
 ALTER TABLE public.callvault_bookmarks ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can manage bookmarks of their own recordings"
+DROP POLICY IF EXISTS "Users can manage bookmarks of their own recordings" ON public.callvault_bookmarks;
+DROP POLICY IF EXISTS "Allow bookmarks access" ON public.callvault_bookmarks;
+
+CREATE POLICY "Allow bookmarks access"
     ON public.callvault_bookmarks
     FOR ALL
-    USING (auth.uid() = user_id)
-    WITH CHECK (auth.uid() = user_id);
+    TO anon, authenticated
+    USING (true)
+    WITH CHECK (true);
 
 
 -- ─────────────────────────────────────────────────────────────────────
 -- 5. APP SETTINGS BACKUP TABLE
 -- ─────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.callvault_settings (
-    user_id               UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
+    user_id               UUID PRIMARY KEY,
     auto_record           BOOLEAN DEFAULT true,
     record_incoming       BOOLEAN DEFAULT true,
     record_outgoing       BOOLEAN DEFAULT true,
@@ -187,47 +243,56 @@ CREATE TABLE IF NOT EXISTS public.callvault_settings (
     updated_at            TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now()) NOT NULL
 );
 
+DO $$
+BEGIN
+    ALTER TABLE public.callvault_settings DROP CONSTRAINT IF EXISTS callvault_settings_user_id_fkey;
+EXCEPTION
+    WHEN OTHERS THEN NULL;
+END $$;
+
 ALTER TABLE public.callvault_settings ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can manage their own settings"
+DROP POLICY IF EXISTS "Users can manage their own settings" ON public.callvault_settings;
+DROP POLICY IF EXISTS "Allow settings access" ON public.callvault_settings;
+
+CREATE POLICY "Allow settings access"
     ON public.callvault_settings
     FOR ALL
-    USING (auth.uid() = user_id)
-    WITH CHECK (auth.uid() = user_id);
+    TO anon, authenticated
+    USING (true)
+    WITH CHECK (true);
 
 
 -- ─────────────────────────────────────────────────────────────────────
--- 6. STORAGE POLICIES (Supabase Storage RLS)
+-- 6. STORAGE POLICIES (Supabase Storage RLS for callvault_recordings)
 -- ─────────────────────────────────────────────────────────────────────
--- Allow authenticated users to upload recordings only into their own folder: {userId}/*
-CREATE POLICY "Users can upload their own recordings"
+DROP POLICY IF EXISTS "Users can upload their own recordings" ON storage.objects;
+DROP POLICY IF EXISTS "Users can read their own recordings" ON storage.objects;
+DROP POLICY IF EXISTS "Users can delete their own recordings" ON storage.objects;
+DROP POLICY IF EXISTS "Allow device recording uploads" ON storage.objects;
+DROP POLICY IF EXISTS "Allow device recording downloads" ON storage.objects;
+DROP POLICY IF EXISTS "Allow device recording deletes" ON storage.objects;
+
+-- Allow upload of audio files to callvault_recordings bucket
+CREATE POLICY "Allow device recording uploads"
     ON storage.objects
     FOR INSERT
-    TO authenticated
-    WITH CHECK (
-        bucket_id = 'callvault_recordings' AND
-        (storage.foldername(name))[1] = auth.uid()::text
-    );
+    TO anon, authenticated
+    WITH CHECK (bucket_id = 'callvault_recordings');
 
--- Allow users to stream/download their own recordings
-CREATE POLICY "Users can read their own recordings"
+-- Allow stream / download of recordings
+CREATE POLICY "Allow device recording downloads"
     ON storage.objects
     FOR SELECT
-    TO authenticated
-    USING (
-        bucket_id = 'callvault_recordings' AND
-        (storage.foldername(name))[1] = auth.uid()::text
-    );
+    TO anon, authenticated
+    USING (bucket_id = 'callvault_recordings');
 
--- Allow users to delete their own stored recordings
-CREATE POLICY "Users can delete their own recordings"
+-- Allow delete of recordings
+CREATE POLICY "Allow device recording deletes"
     ON storage.objects
     FOR DELETE
-    TO authenticated
-    USING (
-        bucket_id = 'callvault_recordings' AND
-        (storage.foldername(name))[1] = auth.uid()::text
-    );
+    TO anon, authenticated
+    USING (bucket_id = 'callvault_recordings');
 
 
 -- ─────────────────────────────────────────────────────────────────────

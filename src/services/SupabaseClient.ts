@@ -21,9 +21,19 @@ const DEVICE_USER_ID_KEY = '@callvault_device_user_id';
 export async function getOrCreateUserId(): Promise<string> {
   try {
     // 1. Check if user is signed in via Supabase Auth
-    const { data: { session } } = await supabase.auth.getSession();
+    let { data: { session } } = await supabase.auth.getSession();
     if (session?.user?.id) {
       return session.user.id;
+    }
+
+    // Try signing in anonymously if enabled in project
+    try {
+      const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
+      if (!anonError && anonData?.user?.id) {
+        return anonData.user.id;
+      }
+    } catch {
+      // Anonymous sign-ins not enabled in dashboard, proceed to persistent device ID
     }
 
     // 2. Check local persistent storage for previously generated device UUID
