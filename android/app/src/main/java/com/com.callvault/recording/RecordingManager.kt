@@ -113,7 +113,16 @@ class RecordingManager(private val context: Context) {
             if (file.exists()) {
                 val size = file.length()
                 if (size > 0) {
-                    return RecordingResult(path, durationSec, size, endTime)
+                    val encryptedFile = File("${path}.enc")
+                    return try {
+                        com.callvault.security.CryptoEngine.encryptFile(file, encryptedFile)
+                        file.delete() // Securely delete unencrypted audio immediately
+                        Log.d(TAG, "Audio successfully encrypted with AES-256-GCM: ${encryptedFile.absolutePath}")
+                        RecordingResult(encryptedFile.absolutePath, durationSec, encryptedFile.length(), endTime)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "CryptoEngine encryption failed, fallback to plain file: ${e.message}", e)
+                        RecordingResult(path, durationSec, size, endTime)
+                    }
                 } else {
                     file.delete()
                 }

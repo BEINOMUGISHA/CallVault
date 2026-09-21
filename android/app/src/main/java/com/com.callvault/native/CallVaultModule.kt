@@ -39,6 +39,7 @@ class CallVaultModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
     private val db = AppDatabase.getInstance(reactContext)
     private val coroutineScope = CoroutineScope(Dispatchers.IO)
     private var mediaPlayer: MediaPlayer? = null
+    private var currentTempDecryptedFile: File? = null
 
     override fun getName(): String {
         return "CallVaultModule"
@@ -309,6 +310,20 @@ class CallVaultModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
     fun playAudio(filePath: String, promise: Promise) {
         try {
             stopAudioInternal()
+
+            val resolvedPath = if (!filePath.startsWith("http://") && !filePath.startsWith("https://") && filePath.endsWith(".enc")) {
+                val encFile = File(filePath)
+                if (encFile.exists()) {
+                    val temp = com.callvault.security.CryptoEngine.decryptToTempFile(encFile, reactApplicationContext.cacheDir)
+                    currentTempDecryptedFile = temp
+                    temp.absolutePath
+                } else {
+                    filePath
+                }
+            } else {
+                filePath
+            }
+
             mediaPlayer = MediaPlayer().apply {
                 setAudioAttributes(
                     AudioAttributes.Builder()
@@ -317,9 +332,9 @@ class CallVaultModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
                         .build()
                 )
 
-                if (filePath.startsWith("http://") || filePath.startsWith("https://")) {
+                if (resolvedPath.startsWith("http://") || resolvedPath.startsWith("https://")) {
                     // Stream directly from remote cloud storage without downloading to device
-                    setDataSource(reactApplicationContext, Uri.parse(filePath))
+                    setDataSource(reactApplicationContext, Uri.parse(resolvedPath))
                     setOnPreparedListener { mp ->
                         mp.start()
                         promise.resolve(true)
@@ -331,7 +346,7 @@ class CallVaultModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
                     }
                     prepareAsync()
                 } else {
-                    setDataSource(filePath)
+                    setDataSource(resolvedPath)
                     prepare()
                     start()
                     promise.resolve(true)
@@ -393,6 +408,16 @@ class CallVaultModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
             it.release()
         }
         mediaPlayer = null
+
+        // Securely clean up any temporary decrypted cache audio file
+        currentTempDecryptedFile?.let {
+            try {
+                if (it.exists()) it.delete()
+            } catch (e: Exception) {
+                // Ignore
+            }
+        }
+        currentTempDecryptedFile = null
     }
 
     @ReactMethod
@@ -436,10 +461,15 @@ class CallVaultModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
                     val file = File(record.filePath)
                     if (file.exists()) {
                         val context = reactApplicationContext
+                        val shareFile = if (file.name.endsWith(".enc")) {
+                            com.callvault.security.CryptoEngine.decryptToTempFile(file, context.cacheDir)
+                        } else {
+                            file
+                        }
                         val uri = FileProvider.getUriForFile(
                             context,
                             "${context.packageName}.fileprovider",
-                            file
+                            shareFile
                         )
                         val intent = Intent(Intent.ACTION_SEND).apply {
                             type = "audio/*"
@@ -468,13 +498,7 @@ class CallVaultModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
     @ReactMethod
     fun isIgnoringBatteryOptimizations(promise: Promise) {
         try {
-            val pm = reactApplicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager
-            val packageName = reactApplicationContext.packageName
-            val ignoring = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                pm.isIgnoringBatteryOptimizations(packageName)
-            } else {
-                true
-            }
+            val ignoring = com.callvault.security.OEMHelper.isBatteryOptimizationIgnored(reactApplicationContext)
             promise.resolve(ignoring)
         } catch (e: Exception) {
             promise.reject("BATTERY_ERROR", e.message, e)
@@ -484,12 +508,7 @@ class CallVaultModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
     @ReactMethod
     fun requestIgnoreBatteryOptimizations(promise: Promise) {
         try {
-            val packageName = reactApplicationContext.packageName
-            val intent = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                data = Uri.parse("package:$packageName")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            reactApplicationContext.startActivity(intent)
+            com.callvault.security.OEMHelper.requestBatteryOptimizationExemption(reactApplicationContext)
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("BATTERY_REQUEST_ERROR", e.message, e)
@@ -499,38 +518,8 @@ class CallVaultModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
     @ReactMethod
     fun openAutoStartSettings(promise: Promise) {
         try {
-            val context = reactApplicationContext
-            val manufacturer = android.os.Build.MANUFACTURER.lowercase()
-            val intent = Intent()
-            val packageName = context.packageName
-
-            when (manufacturer) {
-                "xiaomi" -> intent.component = android.content.ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")
-                "oppo" -> intent.component = android.content.ComponentName("com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity")
-                "vivo" -> intent.component = android.content.ComponentName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity")
-                "huawei", "honor" -> intent.component = android.content.ComponentName("com.huawei.systemmanager", "com.huawei.systemmanager.optimize.process.ProtectActivity")
-                else -> {
-                    intent.action = android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS
-                    intent.data = Uri.parse("package:$packageName")
-                }
-            }
-
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-
-            // Resolve activity before launching
-            val pm = context.packageManager
-            if (intent.resolveActivity(pm) != null) {
-                context.startActivity(intent)
-                promise.resolve(true)
-            } else {
-                // Fallback to generic details page
-                val fallbackIntent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                    data = Uri.parse("package:$packageName")
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                context.startActivity(fallbackIntent)
-                promise.resolve(true)
-            }
+            val success = com.callvault.security.OEMHelper.openAutoStartPermissionMenu(reactApplicationContext)
+            promise.resolve(success)
         } catch (e: Exception) {
             promise.reject("AUTO_START_ERROR", e.message, e)
         }

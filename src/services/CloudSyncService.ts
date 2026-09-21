@@ -84,19 +84,22 @@ export class CloudSyncService {
       const fileUri = Platform.OS === 'android' ? 'file://' + record.filePath : record.filePath;
       const storagePath = `${userId}/${fileName}`;
 
+      const isEncrypted = fileName.endsWith('.enc');
+      const mimeType = isEncrypted ? 'application/octet-stream' : 'audio/mpeg';
+
       // 1. Prepare form data binary
       const formData = new FormData();
       formData.append('file', {
         uri: fileUri,
         name: fileName,
-        type: 'audio/mpeg',
+        type: mimeType,
       } as any);
 
       // 2. Upload to Supabase Storage
       const { error: uploadError } = await supabase.storage
         .from(STORAGE_BUCKET)
         .upload(storagePath, formData, {
-          contentType: 'audio/mpeg',
+          contentType: mimeType,
           upsert: true,
         });
 

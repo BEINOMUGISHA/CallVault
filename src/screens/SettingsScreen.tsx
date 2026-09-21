@@ -329,6 +329,16 @@ export default function SettingsScreen({ navigation }: any) {
             />
           </View>
 
+          <View style={styles.settingItem}>
+            <View style={styles.settingTextGroup}>
+              <Text style={styles.settingLabel}>Background Watchdog</Text>
+              <Text style={styles.settingDesc}>WorkManager heartbeat revives service if terminated by OEM battery savers.</Text>
+            </View>
+            <View style={{ backgroundColor: 'rgba(56, 189, 248, 0.15)', borderColor: '#38BDF8', borderWidth: 1, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
+              <Text style={{ color: '#38BDF8', fontSize: 11, fontWeight: '700' }}>ACTIVE</Text>
+            </View>
+          </View>
+
           <View style={[styles.settingItem, styles.lastItem]}>
             <View style={styles.settingTextGroup}>
               <Text style={styles.settingLabel}>Auto-Start & Background Settings</Text>

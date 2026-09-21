@@ -23,5 +23,22 @@ class MainApplication : Application(), ReactApplication {
   override fun onCreate() {
     super.onCreate()
     loadReactNative(this)
+    scheduleServiceWatchdog()
+  }
+
+  private fun scheduleServiceWatchdog() {
+    try {
+      val watchdogRequest = androidx.work.PeriodicWorkRequestBuilder<com.callvault.services.ServiceWatchdogWorker>(
+        15, java.util.concurrent.TimeUnit.MINUTES
+      ).build()
+
+      androidx.work.WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+        "CallVault_ServiceWatchdog",
+        androidx.work.ExistingPeriodicWorkPolicy.KEEP,
+        watchdogRequest
+      )
+    } catch (e: Exception) {
+      android.util.Log.e("MainApplication", "Failed to schedule service watchdog: ${e.message}")
+    }
   }
 }
