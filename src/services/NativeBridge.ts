@@ -1,4 +1,4 @@
-import { NativeModules, Platform } from 'react-native';
+import { NativeModules, Platform, NativeEventEmitter } from 'react-native';
 import { CallRecord, StorageUsage } from '../types';
 
 const { CallVaultModule } = NativeModules;
@@ -8,6 +8,9 @@ const isAndroid = Platform.OS === 'android';
 if (!CallVaultModule && isAndroid) {
   console.error('CallVaultModule is not linked. Make sure to rebuild the native application.');
 }
+
+const callVaultEmitter = isAndroid && CallVaultModule ? new NativeEventEmitter(CallVaultModule) : null;
+
 
 export const NativeBridge = {
   async startService(
@@ -247,4 +250,73 @@ export const NativeBridge = {
       return false;
     }
   },
+
+  async setFlagSecure(enabled: boolean): Promise<boolean> {
+    if (!isAndroid) return true;
+    try {
+      return await CallVaultModule.setFlagSecure(enabled);
+    } catch (e) {
+      console.error('NativeBridge: setFlagSecure failed', e);
+      return false;
+    }
+  },
+
+  async updateRecordSync(id: number, cloudPath: string, status: string): Promise<boolean> {
+    if (!isAndroid) return false;
+    try {
+      return await CallVaultModule.updateRecordSync(id, cloudPath, status);
+    } catch (e) {
+      console.error('NativeBridge: updateRecordSync failed', e);
+      return false;
+    }
+  },
+
+  async startShakeDetector(): Promise<boolean> {
+    if (!isAndroid) return false;
+    try {
+      return await CallVaultModule.startShakeDetector();
+    } catch (e) {
+      console.error('NativeBridge: startShakeDetector failed', e);
+      return false;
+    }
+  },
+
+  async stopShakeDetector(): Promise<boolean> {
+    if (!isAndroid) return false;
+    try {
+      return await CallVaultModule.stopShakeDetector();
+    } catch (e) {
+      console.error('NativeBridge: stopShakeDetector failed', e);
+      return false;
+    }
+  },
+
+  async panicWipe(): Promise<boolean> {
+    if (!isAndroid) return false;
+    try {
+      return await CallVaultModule.panicWipe();
+    } catch (e) {
+      console.error('NativeBridge: panicWipe failed', e);
+      return false;
+    }
+  },
+
+  async checkDeviceIntegrity(): Promise<{ isEmulator: boolean; isRooted: boolean }> {
+    if (!isAndroid) return { isEmulator: false, isRooted: false };
+    try {
+      return await CallVaultModule.checkDeviceIntegrity();
+    } catch (e) {
+      console.error('NativeBridge: checkDeviceIntegrity failed', e);
+      return { isEmulator: false, isRooted: false };
+    }
+  },
+
+  onDeviceShaken(callback: () => void): () => void {
+    if (!callVaultEmitter) return () => {};
+    const subscription = callVaultEmitter.addListener('onDeviceShaken', callback);
+    return () => {
+      subscription.remove();
+    };
+  },
 };
+

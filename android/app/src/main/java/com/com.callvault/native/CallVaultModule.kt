@@ -23,10 +23,16 @@ import com.callvault.services.CallRecordingService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import com.facebook.react.modules.core.DeviceEventManagerModule
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import kotlin.math.sqrt
 
 class CallVaultModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
     private val TAG = "CallVaultModule"
@@ -289,6 +295,10 @@ class CallVaultModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
                 putString("callType", record.callType)
                 putDouble("fileSize", record.fileSize.toDouble())
                 putDouble("createdAt", record.createdAt.toDouble())
+                // Cloud sync fields (v2)
+                putString("cloudStorageId", record.cloudStorageId)
+                putString("cloudRecordId", record.cloudRecordId)
+                putString("syncStatus", record.syncStatus)
             }
             array.pushMap(map)
         }
@@ -306,11 +316,27 @@ class CallVaultModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
                         .setUsage(AudioAttributes.USAGE_MEDIA)
                         .build()
                 )
-                setDataSource(filePath)
-                prepare()
-                start()
+
+                if (filePath.startsWith("http://") || filePath.startsWith("https://")) {
+                    // Stream directly from remote cloud storage without downloading to device
+                    setDataSource(reactApplicationContext, Uri.parse(filePath))
+                    setOnPreparedListener { mp ->
+                        mp.start()
+                        promise.resolve(true)
+                    }
+                    setOnErrorListener { _, what, extra ->
+                        Log.e(TAG, "MediaPlayer stream error: what=$what extra=$extra")
+                        promise.reject("STREAM_FAILED", "Failed to stream cloud recording (code: $what)")
+                        true
+                    }
+                    prepareAsync()
+                } else {
+                    setDataSource(filePath)
+                    prepare()
+                    start()
+                    promise.resolve(true)
+                }
             }
-            promise.resolve(true)
         } catch (e: Exception) {
             Log.e(TAG, "Error playing audio: ${e.message}", e)
             promise.reject("PLAY_FAILED", e.message, e)
@@ -509,4 +535,227 @@ class CallVaultModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
             promise.reject("AUTO_START_ERROR", e.message, e)
         }
     }
+
+    @ReactMethod
+    fun setFlagSecure(enabled: Boolean, promise: Promise) {
+        com.facebook.react.bridge.UiThreadUtil.runOnUiThread {
+            try {
+                val activity = currentActivity
+                if (activity != null) {
+                    if (enabled) {
+                        activity.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+                        Log.d(TAG, "FLAG_SECURE enabled. Screenshots & screen recording blocked.")
+                    } else {
+                        activity.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+                        Log.d(TAG, "FLAG_SECURE disabled.")
+                    }
+                    promise.resolve(true)
+                } else {
+                    promise.resolve(false)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to toggle FLAG_SECURE: ${e.message}", e)
+                promise.reject("FLAG_SECURE_FAILED", e.message, e)
+            }
+        }
+    }
+
+    @ReactMethod
+    fun updateRecordSync(id: Double, cloudPath: String, status: String, promise: Promise) {
+        coroutineScope.launch {
+            try {
+                val recordId = id.toLong()
+                val record = db.callRecordDao().getById(recordId)
+                if (record != null) {
+                    // Use the dedicated DAO query to atomically update all cloud sync fields
+                    // cloudPath format: "userId/filename.mp3" (Supabase Storage path)
+                    // cloudRecordId: not passed from JS yet; derive from cloudPath or use empty string
+                    val cloudRecordId = "" // Will be set directly by CloudSyncService via Supabase
+                    db.callRecordDao().updateSyncStatus(
+                        id = recordId,
+                        cloudStorageId = cloudPath,
+                        cloudRecordId = cloudRecordId,
+                        syncStatus = status
+                    )
+                    Log.d(TAG, "Record $recordId synced: cloudPath=$cloudPath, status=$status")
+                    promise.resolve(true)
+                } else {
+                    promise.resolve(false)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error updating record sync status: ${e.message}", e)
+                promise.reject("UPDATE_SYNC_FAILED", e.message, e)
+            }
+        }
+    }
+
+    // --- Shake Detector Implementation ---
+    private var sensorManager: SensorManager? = null
+    private var accelerometer: Sensor? = null
+    private var shakeListener: SensorEventListener? = null
+    private var lastShakeTimestamp: Long = 0
+
+    @ReactMethod
+    fun startShakeDetector(promise: Promise) {
+        com.facebook.react.bridge.UiThreadUtil.runOnUiThread {
+            try {
+                if (sensorManager == null) {
+                    sensorManager = reactApplicationContext.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+                    accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+                }
+
+                if (accelerometer == null) {
+                    promise.resolve(false)
+                    return@runOnUiThread
+                }
+
+                if (shakeListener == null) {
+                    shakeListener = object : SensorEventListener {
+                        override fun onSensorChanged(event: SensorEvent) {
+                            val x = event.values[0]
+                            val y = event.values[1]
+                            val z = event.values[2]
+                            val gX = x / SensorManager.GRAVITY_EARTH
+                            val gY = y / SensorManager.GRAVITY_EARTH
+                            val gZ = z / SensorManager.GRAVITY_EARTH
+                            val gForce = sqrt((gX * gX + gY * gY + gZ * gZ).toDouble()).toFloat()
+
+                            // Shake threshold
+                            if (gForce > 2.7f) {
+                                val now = System.currentTimeMillis()
+                                if (now - lastShakeTimestamp > 1000) {
+                                    lastShakeTimestamp = now
+                                    Log.d(TAG, "Shake detected with gForce: $gForce! Emitting onDeviceShaken event.")
+                                    sendJSEvent("onDeviceShaken", null)
+                                }
+                            }
+                        }
+
+                        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+                    }
+                }
+
+                sensorManager?.registerListener(
+                    shakeListener,
+                    accelerometer,
+                    SensorManager.SENSOR_DELAY_UI
+                )
+                promise.resolve(true)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error starting shake detector: ${e.message}", e)
+                promise.reject("SHAKE_DETECTOR_FAILED", e.message, e)
+            }
+        }
+    }
+
+    @ReactMethod
+    fun stopShakeDetector(promise: Promise) {
+        com.facebook.react.bridge.UiThreadUtil.runOnUiThread {
+            try {
+                shakeListener?.let {
+                    sensorManager?.unregisterListener(it)
+                }
+                promise.resolve(true)
+            } catch (e: Exception) {
+                promise.reject("STOP_SHAKE_FAILED", e.message, e)
+            }
+        }
+    }
+
+    // --- Panic Wipe: Emergency Total Destruction ---
+    @ReactMethod
+    fun panicWipe(promise: Promise) {
+        coroutineScope.launch {
+            try {
+                // 1. Destroy local audio playback
+                stopAudioInternal()
+
+                // 2. Clear entire Room database
+                db.clearAllTables()
+
+                // 3. Wipe all cache recordings
+                reactApplicationContext.cacheDir?.deleteRecursively()
+
+                // 4. Wipe any files directory audio
+                reactApplicationContext.getExternalFilesDir(null)?.deleteRecursively()
+
+                // 5. Clear CallVault Shared Preferences
+                val prefs = reactApplicationContext.getSharedPreferences("CallVaultSettings", Context.MODE_PRIVATE)
+                prefs.edit().clear().apply()
+
+                Log.w(TAG, "PANIC WIPE EXECUTED: All local data and records permanently destroyed.")
+                promise.resolve(true)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to execute panic wipe: ${e.message}", e)
+                promise.reject("PANIC_WIPE_FAILED", e.message, e)
+            }
+        }
+    }
+
+    // --- Anti-Forensic & Emulator Detection ---
+    @ReactMethod
+    fun checkDeviceIntegrity(promise: Promise) {
+        try {
+            val isEmulator = Build.FINGERPRINT.startsWith("generic")
+                    || Build.FINGERPRINT.startsWith("unknown")
+                    || Build.MODEL.contains("google_sdk")
+                    || Build.MODEL.contains("Emulator")
+                    || Build.MODEL.contains("Android SDK built for x86")
+                    || Build.MANUFACTURER.contains("Genymotion")
+                    || (Build.BRAND.startsWith("generic") && Build.DEVICE.startsWith("generic"))
+                    || "google_sdk" == Build.PRODUCT
+
+            val suPaths = arrayOf(
+                "/system/app/Superuser.apk",
+                "/sbin/su",
+                "/system/bin/su",
+                "/system/xbin/su",
+                "/data/local/xbin/su",
+                "/data/local/bin/su",
+                "/system/sd/xbin/su",
+                "/system/bin/failsafe/su",
+                "/data/local/su"
+            )
+            var isRooted = false
+            for (path in suPaths) {
+                if (File(path).exists()) {
+                    isRooted = true
+                    break
+                }
+            }
+
+            val map = Arguments.createMap().apply {
+                putBoolean("isEmulator", isEmulator)
+                putBoolean("isRooted", isRooted)
+            }
+            promise.resolve(map)
+        } catch (e: Exception) {
+            promise.reject("INTEGRITY_CHECK_FAILED", e.message, e)
+        }
+    }
+
+    // --- React Native Event Helper ---
+    private fun sendJSEvent(eventName: String, params: Any?) {
+        try {
+            if (reactApplicationContext.hasActiveReactInstance()) {
+                reactApplicationContext
+                    .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                    .emit(eventName, params)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to send JS event $eventName: ${e.message}")
+        }
+    }
+
+    @ReactMethod
+    fun addListener(eventName: String) {
+        // Required for RN built-in Event Emitter
+    }
+
+    @ReactMethod
+    fun removeListeners(count: Int) {
+        // Required for RN built-in Event Emitter
+    }
 }
+
+

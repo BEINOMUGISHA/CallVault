@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -13,8 +13,10 @@ import {
 import { useCallStore } from '../store/useCallStore';
 import { formatBytes } from '../utils/format';
 import TabBar from '../components/TabBar';
+import { CloudSyncService } from '../services/CloudSyncService';
+import { DECOY_RECORDS } from '../utils/decoyData';
 
-export default function DashboardScreen({ navigation }: any) {
+export default function DashboardScreen({ navigation, decoyMode }: any) {
   const {
     isLoading,
     isServiceRunning,
@@ -26,18 +28,27 @@ export default function DashboardScreen({ navigation }: any) {
     toggleService,
   } = useCallStore();
 
+  const [storageSaved, setStorageSaved] = useState(0);
+
   useEffect(() => {
-    // Initial data loading and status check
-    loadAll();
-    requestPermissions();
+    if (!decoyMode) {
+      loadAll();
+      requestPermissions();
+      // Sync any pending recordings on screen mount
+      CloudSyncService.syncPendingRecordings().catch(() => {});
+      CloudSyncService.getStorageSpaceSaved().then(setStorageSaved).catch(() => {});
 
-    // Poll service status every 3 seconds to keep UI synced
-    const interval = setInterval(() => {
-      useCallStore.getState().checkServiceStatus();
-    }, 3000);
+      const interval = setInterval(() => {
+        useCallStore.getState().checkServiceStatus();
+        CloudSyncService.syncPendingRecordings().catch(() => {});
+        CloudSyncService.getStorageSpaceSaved().then(setStorageSaved).catch(() => {});
+      }, 30_000);
 
-    return () => clearInterval(interval);
-  }, []);
+      return () => clearInterval(interval);
+    }
+  }, [decoyMode]);
+
+
 
   const requestPermissions = async () => {
     if (Platform.OS !== 'android') return;
@@ -68,18 +79,24 @@ export default function DashboardScreen({ navigation }: any) {
   };
 
   const handleToggleService = async () => {
+    if (decoyMode) return;
     await toggleService();
   };
 
-  const recentRecords = records.slice(0, 3);
+  const displayRecords = decoyMode ? DECOY_RECORDS : records;
+  const recentRecords = displayRecords.slice(0, 3);
+  const displayTotalCount = decoyMode ? DECOY_RECORDS.length : storageUsage.totalCount;
+  const displayTotalBytes = decoyMode ? 0 : storageUsage.totalBytes;
+  const displaySaved = decoyMode ? 1496000 : storageSaved;
+  const displayTodayCount = decoyMode ? 1 : todayCallsCount;
 
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerSubtitle}>SECURE PHONE ARCHIVE</Text>
-          <Text style={styles.headerTitle}>CallVault</Text>
+          <Text style={styles.headerSubtitle}>{decoyMode ? 'SYSTEM ARCHIVE' : 'SECURE PHONE ARCHIVE'}</Text>
+          <Text style={styles.headerTitle}>{decoyMode ? 'Media Vault' : 'CallVault'}</Text>
         </View>
 
         {/* Service Running Status Card */}
@@ -88,28 +105,28 @@ export default function DashboardScreen({ navigation }: any) {
             <View
               style={[
                 styles.statusDot,
-                { backgroundColor: isServiceRunning ? '#10B981' : '#EF4444' },
+                { backgroundColor: (decoyMode || isServiceRunning) ? '#10B981' : '#EF4444' },
               ]}
             />
             <Text style={styles.statusLabel}>
-              Recording Engine: {isServiceRunning ? 'ACTIVE' : 'STOPPED'}
+              Recording Engine: {(decoyMode || isServiceRunning) ? 'ACTIVE' : 'STOPPED'}
             </Text>
           </View>
           <Text style={styles.statusDesc}>
-            {isServiceRunning
+            {(decoyMode || isServiceRunning)
               ? 'Background service is running and monitoring telephony actions.'
               : 'Auto-recording is inactive. Tap below to launch background services.'}
           </Text>
           <TouchableOpacity
             style={[
               styles.actionButton,
-              { backgroundColor: isServiceRunning ? '#EF4444' : '#2563EB' },
+              { backgroundColor: (decoyMode || isServiceRunning) ? '#EF4444' : '#2563EB' },
             ]}
             onPress={handleToggleService}
             activeOpacity={0.8}
           >
             <Text style={styles.actionButtonText}>
-              {isServiceRunning ? 'Stop Engine' : 'Activate Engine'}
+              {(decoyMode || isServiceRunning) ? 'Stop Engine' : 'Activate Engine'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -124,30 +141,38 @@ export default function DashboardScreen({ navigation }: any) {
         <View style={styles.statsGrid}>
           <View style={styles.statCard}>
             <Text style={styles.statIcon}>🎙️</Text>
-            <Text style={styles.statValue}>{storageUsage.totalCount}</Text>
+            <Text style={styles.statValue}>{displayTotalCount}</Text>
             <Text style={styles.statLabel}>Total Files</Text>
           </View>
 
           <View style={styles.statCard}>
             <Text style={styles.statIcon}>💾</Text>
-            <Text style={styles.statValue}>{formatBytes(storageUsage.totalBytes)}</Text>
-            <Text style={styles.statLabel}>Storage Used</Text>
+            <Text style={styles.statValue}>{formatBytes(displayTotalBytes)}</Text>
+            <Text style={styles.statLabel}>On Device</Text>
+          </View>
+
+          <View style={styles.statCard}>
+            <Text style={styles.statIcon}>☁️</Text>
+            <Text style={styles.statValue}>{formatBytes(displaySaved)}</Text>
+            <Text style={styles.statLabel}>Saved</Text>
           </View>
 
           <View style={styles.statCard}>
             <Text style={styles.statIcon}>📞</Text>
-            <Text style={styles.statValue}>{todayCallsCount}</Text>
-            <Text style={styles.statLabel}>Calls Today</Text>
+            <Text style={styles.statValue}>{displayTodayCount}</Text>
+            <Text style={styles.statLabel}>Today</Text>
           </View>
         </View>
+
 
         {/* Recent Recordings */}
         <View style={styles.recentHeader}>
           <Text style={styles.sectionTitle}>Recent Audio Files</Text>
-          <TouchableOpacity onPress={() => navigation.replace('Recordings')}>
+          <TouchableOpacity onPress={() => navigation.replace(decoyMode ? 'DecoyRecordings' : 'Recordings')}>
             <Text style={styles.viewAllText}>View All</Text>
           </TouchableOpacity>
         </View>
+
 
         {recentRecords.length === 0 ? (
           <View style={[styles.card, styles.emptyCard]}>

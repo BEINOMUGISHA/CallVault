@@ -8,19 +8,37 @@ import {
   ScrollView,
   Alert,
   Platform,
+  TextInput,
+  Modal,
 } from 'react-native';
 import { useCallStore } from '../store/useCallStore';
 import TabBar from '../components/TabBar';
 import { NativeBridge } from '../services/NativeBridge';
+import { SecurityService } from '../services/SecurityService';
 
 export default function SettingsScreen({ navigation }: any) {
   const { settings, updateSettings, isServiceRunning, toggleService } = useCallStore();
 
   const [isBatteryIgnored, setIsBatteryIgnored] = React.useState(true);
+  // Security state
+  const [disguiseEnabled, setDisguiseEnabled] = React.useState(false);
+  const [flagSecureEnabled, setFlagSecureEnabled] = React.useState(true);
+  const [shakeToLockEnabled, setShakeToLockEnabled] = React.useState(true);
+  const [autoLockEnabled, setAutoLockEnabled] = React.useState(true);
+  const [duressModalVisible, setDuressModalVisible] = React.useState(false);
+  const [duressPin, setDuressPin] = React.useState('');
+  const [panicModalVisible, setPanicModalVisible] = React.useState(false);
+  const [panicPin, setPanicPin] = React.useState('');
 
   React.useEffect(() => {
     checkBatteryOptimization();
+    // Load security settings
+    SecurityService.isDisguiseEnabled().then(setDisguiseEnabled);
+    SecurityService.isFlagSecureEnabled().then(setFlagSecureEnabled);
+    SecurityService.isShakeToLockEnabled().then(setShakeToLockEnabled);
+    SecurityService.isAutoLockEnabled().then(setAutoLockEnabled);
   }, []);
+
 
   const checkBatteryOptimization = async () => {
     const ignored = await NativeBridge.isIgnoringBatteryOptimizations();
@@ -66,6 +84,113 @@ export default function SettingsScreen({ navigation }: any) {
     updateSettings({ audioQuality: quality });
     Alert.alert('Quality Updated', `Audio compression adjusted to ${quality.toUpperCase()} mode.`);
   };
+
+  const handleToggleDisguise = async (enabled: boolean) => {
+    if (enabled) {
+      Alert.alert(
+        'Enable Calculator Disguise?',
+        'The app will show as a calculator. Enter PIN "9999" via the = key to open the vault.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Enable',
+            onPress: async () => {
+              await SecurityService.setDisguiseEnabled(true);
+              setDisguiseEnabled(true);
+              Alert.alert('Disguise Enabled', 'The app will now open as a calculator. Use PIN 9999 to unlock.');
+            },
+          },
+        ]
+      );
+    } else {
+      await SecurityService.setDisguiseEnabled(false);
+      setDisguiseEnabled(false);
+    }
+  };
+
+  const handleToggleFlagSecure = async (enabled: boolean) => {
+    await SecurityService.setFlagSecure(enabled);
+    setFlagSecureEnabled(enabled);
+    Alert.alert(
+      enabled ? 'Screen Protection On' : 'Screen Protection Off',
+      enabled
+        ? 'Screenshots and screen recordings are now blocked.'
+        : 'Screenshots and screen recordings are now allowed.'
+    );
+  };
+
+  const handleSaveDuressPin = async () => {
+    const pin = duressPin.trim();
+    if (pin.length < 4) {
+      Alert.alert('Invalid PIN', 'Duress PIN must be at least 4 digits.');
+      return;
+    }
+    const master = await SecurityService.getPasscode();
+    if (pin === master) {
+      Alert.alert('Invalid PIN', 'Duress PIN cannot be the same as your master PIN.');
+      return;
+    }
+    await SecurityService.setDuressPasscode(pin);
+    setDuressModalVisible(false);
+    setDuressPin('');
+    Alert.alert('Duress PIN Set', 'Entering this PIN will show a decoy empty vault to unauthorized persons.');
+  };
+
+  const handleToggleShakeToLock = async (enabled: boolean) => {
+    await SecurityService.setShakeToLockEnabled(enabled);
+    setShakeToLockEnabled(enabled);
+  };
+
+  const handleToggleAutoLock = async (enabled: boolean) => {
+    await SecurityService.setAutoLockEnabled(enabled);
+    setAutoLockEnabled(enabled);
+  };
+
+  const handleSavePanicPin = async () => {
+    const pin = panicPin.trim();
+    if (pin.length < 4) {
+      Alert.alert('Invalid PIN', 'Panic passcode must be at least 4 digits.');
+      return;
+    }
+    const master = await SecurityService.getPasscode();
+    if (pin === master) {
+      Alert.alert('Invalid PIN', 'Panic passcode cannot be the same as your master PIN.');
+      return;
+    }
+    await SecurityService.setPanicPasscode(pin);
+    setPanicModalVisible(false);
+    setPanicPin('');
+    Alert.alert('Panic PIN Set', 'Entering this code in the calculator will instantly trigger a silent, total data wipe.');
+  };
+
+  const handleExecutePanicWipe = () => {
+    Alert.alert(
+      '⚠️ EMERGENCY PANIC WIPE',
+      'This will IMMEDIATELY and PERMANENTLY delete ALL call recordings, database records, cloud backups, and app settings. This cannot be undone.\n\nAre you sure you want to proceed?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'DESTROY ALL DATA',
+          style: 'destructive',
+          onPress: async () => {
+            await SecurityService.executePanicWipe();
+            Alert.alert('Vault Destroyed', 'All records and files have been permanently erased from device and cloud.', [
+              {
+                text: 'OK',
+                onPress: () => {
+                  navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'CalculatorDisguise' }],
+                  });
+                },
+              },
+            ]);
+          },
+        },
+      ]
+    );
+  };
+
 
   const handleToggleStealthMode = (hide: boolean) => {
     if (hide) {
@@ -256,7 +381,162 @@ export default function SettingsScreen({ navigation }: any) {
             />
           </View>
         </View>
+        {/* Section: Security & Privacy */}
+        <Text style={styles.sectionTitle}>Security & Privacy</Text>
+        <View style={styles.groupCard}>
+          <View style={styles.settingItem}>
+            <View style={styles.settingTextGroup}>
+              <Text style={styles.settingLabel}>Calculator Disguise</Text>
+              <Text style={styles.settingDesc}>Open app as a calculator. Enter PIN via = key to unlock vault.</Text>
+            </View>
+            <Switch
+              value={disguiseEnabled}
+              onValueChange={handleToggleDisguise}
+              trackColor={{ false: '#334155', true: '#2563EB' }}
+              thumbColor={disguiseEnabled ? '#38BDF8' : '#94A3B8'}
+            />
+          </View>
+
+          <View style={styles.settingItem}>
+            <View style={styles.settingTextGroup}>
+              <Text style={styles.settingLabel}>Block Screenshots</Text>
+              <Text style={styles.settingDesc}>Prevent screenshots and screen recording of CallVault</Text>
+            </View>
+            <Switch
+              value={flagSecureEnabled}
+              onValueChange={handleToggleFlagSecure}
+              trackColor={{ false: '#334155', true: '#2563EB' }}
+              thumbColor={flagSecureEnabled ? '#38BDF8' : '#94A3B8'}
+            />
+          </View>
+
+          <View style={styles.settingItem}>
+            <View style={styles.settingTextGroup}>
+              <Text style={styles.settingLabel}>Shake to Lock</Text>
+              <Text style={styles.settingDesc}>Shake device vigorously to instantly lock app & stop audio</Text>
+            </View>
+            <Switch
+              value={shakeToLockEnabled}
+              onValueChange={handleToggleShakeToLock}
+              trackColor={{ false: '#334155', true: '#2563EB' }}
+              thumbColor={shakeToLockEnabled ? '#38BDF8' : '#94A3B8'}
+            />
+          </View>
+
+          <View style={styles.settingItem}>
+            <View style={styles.settingTextGroup}>
+              <Text style={styles.settingLabel}>Auto-Lock on Minimize</Text>
+              <Text style={styles.settingDesc}>Immediately lock app when switched to background</Text>
+            </View>
+            <Switch
+              value={autoLockEnabled}
+              onValueChange={handleToggleAutoLock}
+              trackColor={{ false: '#334155', true: '#2563EB' }}
+              thumbColor={autoLockEnabled ? '#38BDF8' : '#94A3B8'}
+            />
+          </View>
+
+          <View style={styles.settingItem}>
+            <View style={styles.settingTextGroup}>
+              <Text style={styles.settingLabel}>Duress PIN</Text>
+              <Text style={styles.settingDesc}>Decoy PIN that shows a harmless vault when coerced</Text>
+            </View>
+            <TouchableOpacity
+              style={{ backgroundColor: '#334155', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 }}
+              onPress={() => setDuressModalVisible(true)}
+            >
+              <Text style={{ color: '#94A3B8', fontSize: 12, fontWeight: '700' }}>Set PIN</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.settingItem}>
+            <View style={styles.settingTextGroup}>
+              <Text style={styles.settingLabel}>Panic Wipe Code</Text>
+              <Text style={styles.settingDesc}>Entering this code in calculator instantly destroys all records</Text>
+            </View>
+            <TouchableOpacity
+              style={{ backgroundColor: '#334155', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 }}
+              onPress={() => setPanicModalVisible(true)}
+            >
+              <Text style={{ color: '#94A3B8', fontSize: 12, fontWeight: '700' }}>Set Code</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={[styles.settingItem, styles.lastItem]}>
+            <View style={styles.settingTextGroup}>
+              <Text style={[styles.settingLabel, { color: '#EF4444' }]}>Scorched Earth Panic Wipe</Text>
+              <Text style={styles.settingDesc}>Permanently erase all phone database records and cloud backups</Text>
+            </View>
+            <TouchableOpacity
+              style={{ backgroundColor: '#EF4444', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 }}
+              onPress={handleExecutePanicWipe}
+            >
+              <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>Wipe All</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
       </ScrollView>
+
+      {/* Duress PIN Modal */}
+      <Modal visible={duressModalVisible} transparent animationType="fade" onRequestClose={() => setDuressModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Set Duress PIN</Text>
+            <Text style={styles.modalDesc}>
+              When entered, this PIN will open a decoy vault with no recordings. Use it if forced to unlock the app.
+            </Text>
+            <TextInput
+              style={styles.modalInput}
+              value={duressPin}
+              onChangeText={setDuressPin}
+              placeholder="Enter duress PIN (min 4 digits)"
+              placeholderTextColor="#64748B"
+              keyboardType="numeric"
+              secureTextEntry
+              autoFocus
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={[styles.modalButton, styles.modalButtonCancel]} onPress={() => { setDuressModalVisible(false); setDuressPin(''); }}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalButton, styles.modalButtonSave]} onPress={handleSaveDuressPin}>
+                <Text style={styles.modalSaveText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Panic Passcode Modal */}
+      <Modal visible={panicModalVisible} transparent animationType="fade" onRequestClose={() => setPanicModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={[styles.modalTitle, { color: '#EF4444' }]}>Set Panic Self-Destruct PIN</Text>
+            <Text style={styles.modalDesc}>
+              Entering this code into the calculator disguise and pressing = will immediately and irreversibly wipe all local and cloud data.
+            </Text>
+            <TextInput
+              style={styles.modalInput}
+              value={panicPin}
+              onChangeText={setPanicPin}
+              placeholder="Enter panic code (e.g. 0000)"
+              placeholderTextColor="#64748B"
+              keyboardType="numeric"
+              secureTextEntry
+              autoFocus
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={[styles.modalButton, styles.modalButtonCancel]} onPress={() => { setPanicModalVisible(false); setPanicPin(''); }}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#EF4444' }]} onPress={handleSavePanicPin}>
+                <Text style={styles.modalSaveText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Floating Bottom Navigation Tab */}
       <TabBar currentRoute="Settings" navigation={navigation} />
@@ -386,4 +666,62 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 16,
   },
+  // Modal styles for Duress PIN
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.88)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    width: '82%',
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    elevation: 12,
+  },
+  modalTitle: {
+    fontSize: 17,
+    color: '#F8FAFC',
+    fontWeight: '700',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  modalDesc: {
+    fontSize: 12,
+    color: '#94A3B8',
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  modalInput: {
+    backgroundColor: '#0F172A',
+    borderRadius: 8,
+    height: 48,
+    color: '#F8FAFC',
+    paddingHorizontal: 12,
+    fontSize: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  modalButton: {
+    flex: 1,
+    height: 40,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 4,
+  },
+  modalButtonCancel: { backgroundColor: '#334155' },
+  modalButtonSave: { backgroundColor: '#2563EB' },
+  modalCancelText: { color: '#94A3B8', fontWeight: '600', fontSize: 13 },
+  modalSaveText: { color: '#FFFFFF', fontWeight: '700', fontSize: 13 },
 });
+

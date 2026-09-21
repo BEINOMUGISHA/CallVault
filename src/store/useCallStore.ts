@@ -33,6 +33,18 @@ const DEFAULT_SETTINGS: AppSettings = {
   storageLocation: 'CallVault/',
   darkMode: true,
   appVisible: true,
+  // Cloud & zero-storage
+  zeroStorageEnabled: true,
+  // Audio enhancements
+  autoSpeakerphone: false,
+  dspNoiseSuppression: false,
+  dspGainBoost: false,
+  // Security
+  calculatorDisguise: false,
+  passcode: '9999',
+  duressPasscode: '1111',
+  flagSecureEnabled: true,
+  biometricsEnabled: false,
 };
 
 export const useCallStore = create<CallStoreState>((set, get) => ({

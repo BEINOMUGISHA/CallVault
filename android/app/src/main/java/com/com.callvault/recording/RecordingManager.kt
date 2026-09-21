@@ -138,19 +138,15 @@ class RecordingManager(private val context: Context) {
     }
 
     /**
-     * Creates nested directory structures CallVault/YYYY/MM
-     * in the app's external files directory: Android/data/com.callvault/files/
+     * Stores temporary audio buffer in app's cache directory (context.cacheDir/callvault_temp).
+     * This ensures zero persistent storage is consumed on phone once uploaded to cloud.
      */
     private fun getStorageDir(): File? {
-        val rootDir = context.getExternalFilesDir(null) ?: return null
-        val year = SimpleDateFormat("yyyy", Locale.getDefault()).format(Date())
-        val month = SimpleDateFormat("MM", Locale.getDefault()).format(Date())
-        val path = "CallVault" + File.separator + year + File.separator + month
-        val dir = File(rootDir, path)
+        val dir = File(context.cacheDir, "callvault_temp")
         if (!dir.exists()) {
             val created = dir.mkdirs()
             if (!created) {
-                Log.e(TAG, "Failed to create directory structure: ${dir.absolutePath}")
+                Log.e(TAG, "Failed to create cache directory: ${dir.absolutePath}")
                 return null
             }
         }

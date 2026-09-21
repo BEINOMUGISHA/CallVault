@@ -1,0 +1,3 @@
+export const SUPABASE_URL = 'https://jgirfajcvqfflpbrasvb.supabase.co';
+export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpnaXJmYWpjdnFmZmxwYnJhc3ZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk5MTQwNDMsImV4cCI6MjEwNTQ5MDA0M30.9fGh9Qpvh53BDVtnEASy9Y53frWJf7NDOhnknVbDY7g';
+export const STORAGE_BUCKET = 'callvault_recordings';

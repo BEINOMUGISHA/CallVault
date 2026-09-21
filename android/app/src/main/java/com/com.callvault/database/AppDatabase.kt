@@ -5,7 +5,12 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [CallRecordEntity::class], version = 1, exportSchema = false)
+/**
+ * Room database for CallVault.
+ * version 2: Added cloudStorageId, cloudRecordId, syncStatus columns to call_records.
+ * fallbackToDestructiveMigration() used for dev builds — production would use proper migrations.
+ */
+@Database(entities = [CallRecordEntity::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun callRecordDao(): CallRecordDao

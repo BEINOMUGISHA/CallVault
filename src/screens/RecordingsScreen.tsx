@@ -13,11 +13,12 @@ import { useCallStore } from '../store/useCallStore';
 import { formatBytes, formatDate, formatDuration } from '../utils/format';
 import TabBar from '../components/TabBar';
 import { CallRecord } from '../types';
+import { DECOY_RECORDS } from '../utils/decoyData';
 
 type FilterType = 'ALL' | 'INCOMING' | 'OUTGOING' | 'MISSED';
 type SortType = 'date_desc' | 'date_asc' | 'duration_desc' | 'size_desc';
 
-export default function RecordingsScreen({ navigation }: any) {
+export default function RecordingsScreen({ navigation, decoyMode }: any) {
   const { filteredRecords, searchQuery, updateSearchQuery, loadRecords, isLoading } =
     useCallStore();
 
@@ -26,12 +27,15 @@ export default function RecordingsScreen({ navigation }: any) {
   const [showSortOptions, setShowSortOptions] = useState(false);
 
   useEffect(() => {
-    loadRecords();
-  }, []);
+    if (!decoyMode) {
+      loadRecords();
+    }
+  }, [decoyMode]);
 
   // Filter records
   const getFilteredData = (): CallRecord[] => {
-    let data = [...filteredRecords];
+    let data = decoyMode ? [...DECOY_RECORDS] : [...filteredRecords];
+
 
     if (activeFilter !== 'ALL') {
       data = data.filter((r) => r.callType === activeFilter);
