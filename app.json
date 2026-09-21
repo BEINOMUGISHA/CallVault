@@ -5,9 +5,7 @@
     "name": "CallVault",
     "slug": "callvault",
     "version": "1.0.0",
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.0.0",
     "updates": {
       "url": "https://u.expo.dev/7ce6f643-86a3-4b0c-8098-908ca7dda1aa",
       "enabled": true,
