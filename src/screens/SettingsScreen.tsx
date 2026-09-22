@@ -353,6 +353,86 @@ export default function SettingsScreen({ navigation }: any) {
           </View>
         </View>
 
+        {/* Section: Retention & Storage Policy */}
+        <Text style={styles.sectionTitle}>Retention & Storage</Text>
+        <View style={styles.groupCard}>
+          <View style={styles.settingItem}>
+            <View style={styles.settingTextGroup}>
+              <Text style={styles.settingLabel}>Wi-Fi Only Cloud Sync</Text>
+              <Text style={styles.settingDesc}>Only upload recordings to Supabase when connected to Wi-Fi</Text>
+            </View>
+            <Switch
+              value={settings.wifiOnlySync ?? true}
+              onValueChange={(v) => updateSettings({ wifiOnlySync: v })}
+              trackColor={{ false: '#334155', true: '#2563EB' }}
+              thumbColor={(settings.wifiOnlySync ?? true) ? '#38BDF8' : '#94A3B8'}
+            />
+          </View>
+
+          <View style={styles.settingItem}>
+            <View style={styles.settingTextGroup}>
+              <Text style={styles.settingLabel}>Auto-Delete Old Recordings</Text>
+              <Text style={styles.settingDesc}>Automatically purge recordings older than 30 days (favorites & locked are protected)</Text>
+            </View>
+            <Switch
+              value={settings.retention?.enabled ?? false}
+              onValueChange={(v) =>
+                updateSettings({
+                  retention: {
+                    enabled: v,
+                    keepDays: settings.retention?.keepDays ?? 30,
+                    keepFavoritesForever: true,
+                    keepLockedForever: true,
+                    maxLocalStorageMb: settings.retention?.maxLocalStorageMb ?? 500,
+                  },
+                })
+              }
+              trackColor={{ false: '#334155', true: '#F59E0B' }}
+              thumbColor={(settings.retention?.enabled) ? '#FCD34D' : '#94A3B8'}
+            />
+          </View>
+
+          <View style={[styles.settingItem, styles.lastItem]}>
+            <View style={styles.settingTextGroup}>
+              <Text style={styles.settingLabel}>Local Storage Quota</Text>
+              <Text style={styles.settingDesc}>
+                Pause recording when vault exceeds{' '}
+                <Text style={{ color: '#38BDF8', fontWeight: '700' }}>
+                  {settings.retention?.maxLocalStorageMb ?? 500} MB
+                </Text>
+                {' '}(0 = unlimited)
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={{ backgroundColor: '#1E293B', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: '#334155' }}
+              onPress={() =>
+                Alert.prompt(
+                  'Set Storage Quota',
+                  'Enter maximum local vault size in MB (0 = unlimited):',
+                  (value) => {
+                    const mb = parseInt(value ?? '500', 10);
+                    if (!isNaN(mb) && mb >= 0) {
+                      updateSettings({
+                        retention: {
+                          enabled: settings.retention?.enabled ?? false,
+                          keepDays: settings.retention?.keepDays ?? 30,
+                          keepFavoritesForever: true,
+                          keepLockedForever: true,
+                          maxLocalStorageMb: mb,
+                        },
+                      });
+                    }
+                  },
+                  'plain-text',
+                  String(settings.retention?.maxLocalStorageMb ?? 500)
+                )
+              }
+            >
+              <Text style={{ color: '#94A3B8', fontSize: 12, fontWeight: '600' }}>Edit</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* Section: Stealth Mode */}
         <Text style={styles.sectionTitle}>App Stealth Mode</Text>
         <View style={styles.groupCard}>

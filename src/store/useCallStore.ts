@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { CallRecord, AppSettings, StorageUsage } from '../types';
+import { CallRecord, AppSettings, StorageUsage, DEFAULT_RETENTION } from '../types';
 import { NativeBridge } from '../services/NativeBridge';
 
 interface CallStoreState {
@@ -33,6 +33,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   storageLocation: 'CallVault/',
   darkMode: true,
   appVisible: true,
+  e2eEncryptionEnabled: true,
+  wifiOnlySync: true,
+  retention: DEFAULT_RETENTION,
   // Cloud & zero-storage
   zeroStorageEnabled: true,
   // Audio enhancements

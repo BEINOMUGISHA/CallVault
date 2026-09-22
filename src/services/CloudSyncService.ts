@@ -23,43 +23,33 @@ export class CloudSyncService {
     let syncedCount = 0;
 
     try {
-      // 1. Get local records from native Room database
       const localRecords = await NativeBridge.getCallRecords();
       if (!localRecords || localRecords.length === 0) {
         this.isSyncing = false;
         return 0;
       }
 
-      // 2. Load the list of already uploaded record IDs
       const rawSynced = await AsyncStorage.getItem(SYNCED_RECORDS_KEY);
       const syncedIds: number[] = rawSynced ? JSON.parse(rawSynced) : [];
-
       const userId = await getOrCreateUserId();
 
       for (const record of localRecords) {
-        // Check if already synced or if physical file exists
         if (syncedIds.includes(record.id)) continue;
-
         if (!record.filePath || record.filePath.length === 0) continue;
 
         const exists = await RNFS.exists(record.filePath);
         if (!exists) {
-          // File was already deleted or doesn't exist; mark as synced to prevent re-checking
           syncedIds.push(record.id);
           continue;
         }
 
-        console.log(`CloudSyncService: Starting zero-storage upload for call ID ${record.id}`);
+        console.log(`CloudSyncService: Starting upload for call ID ${record.id}`);
         const success = await this.uploadAndPurgeLocalFile(record, userId);
         if (success) {
           syncedIds.push(record.id);
           syncedCount++;
           if (onRecordSynced) {
-            onRecordSynced({
-              ...record,
-              filePath: '',
-              syncStatus: 'synced',
-            });
+            onRecordSynced({ ...record, filePath: '', syncStatus: 'synced' });
           }
         }
       }
@@ -72,6 +62,15 @@ export class CloudSyncService {
     }
 
     return syncedCount;
+  }
+
+  /**
+   * Uploads and purges a single record — used by UploadQueue for
+   * network-aware, retry-backed individual uploads.
+   */
+  static async syncSingleRecord(record: CallRecord): Promise<boolean> {
+    const userId = await getOrCreateUserId();
+    return CloudSyncService.uploadAndPurgeLocalFile(record, userId);
   }
 
   /**
@@ -111,7 +110,7 @@ export class CloudSyncService {
       console.log(`CloudSyncService: Audio uploaded successfully to: ${storagePath}`);
 
       // 3. Insert metadata into public.callvault_records table
-      const { data: insertData, error: dbError } = await supabase
+      const { error: dbError } = await supabase
         .from('callvault_records')
         .insert({
           user_id: userId,
@@ -119,7 +118,7 @@ export class CloudSyncService {
           phone_number: record.phoneNumber,
           call_type: record.callType,
           audio_path: storagePath,
-          audio_format: 'mp3',
+          audio_format: isEncrypted ? 'mp3.enc' : 'mp3',
           duration_seconds: record.duration,
           file_size_bytes: record.fileSize,
           start_time: record.startTime,
@@ -129,18 +128,17 @@ export class CloudSyncService {
         .single();
 
       if (dbError) {
-        console.warn(`CloudSyncService: DB insert warning (may require user profile):`, dbError.message);
+        console.warn('CloudSyncService: DB insert warning:', dbError.message);
       }
 
-      // 4. Update local Room DB row with cloud storage reference & clear local file path
+      // 4. Update local Room DB row with cloud storage reference
       await NativeBridge.updateRecordSync(record.id, storagePath, 'synced');
 
-      // 5. 💥 ZERO-STORAGE AUTO-PURGE: Delete the local physical file immediately!
+      // 5. ZERO-STORAGE AUTO-PURGE: Delete the local physical file immediately
       try {
         await RNFS.unlink(record.filePath);
         console.log(`CloudSyncService: 0-Storage Purge complete. Deleted: ${record.filePath}`);
 
-        // Update persistent counter of storage space saved on this phone
         const rawSaved = await AsyncStorage.getItem(TOTAL_SAVED_BYTES_KEY);
         const currentSaved = rawSaved ? parseInt(rawSaved, 10) : 0;
         await AsyncStorage.setItem(TOTAL_SAVED_BYTES_KEY, (currentSaved + record.fileSize).toString());
@@ -163,7 +161,7 @@ export class CloudSyncService {
     try {
       const { data, error } = await supabase.storage
         .from(STORAGE_BUCKET)
-        .createSignedUrl(storagePath, 3600); // 1 hour validity
+        .createSignedUrl(storagePath, 3600);
 
       if (error || !data?.signedUrl) {
         console.error('CloudSyncService: Failed to generate signed URL', error?.message);
@@ -194,15 +192,9 @@ export class CloudSyncService {
    */
   static async deleteFromCloud(storagePath: string, localId: number): Promise<boolean> {
     try {
-      // 1. Remove from Supabase Storage
       await supabase.storage.from(STORAGE_BUCKET).remove([storagePath]);
-
-      // 2. Remove from Supabase Table
       await supabase.from('callvault_records').delete().eq('audio_path', storagePath);
-
-      // 3. Remove local reference
       await NativeBridge.deleteCallRecord(localId);
-
       return true;
     } catch (e) {
       console.error('CloudSyncService: Error deleting cloud record', e);
