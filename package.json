@@ -3,8 +3,8 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "android": "react-native run-android",
-    "ios": "react-native run-ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "lint": "eslint .",
     "start": "react-native start",
     "test": "jest"
@@ -17,8 +17,6 @@
     "expo": "^57.0.24",
     "expo-constants": "~57.0.19",
     "expo-linking": "~57.0.10",
-    "expo-modules-autolinking": "~57.0.0",
-    "expo-modules-core": "~57.0.18",
     "expo-updates": "~57.0.23",
     "react": "19.2.3",
     "react-native": "0.86.3",
