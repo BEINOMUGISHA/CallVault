@@ -47,7 +47,7 @@ export default function AudioPlayerScreen({ route, navigation }: any) {
 
   const filename = record.cloudStorageId
     ? record.cloudStorageId.split('/').pop() || 'Cloud Recording'
-    : record.filePath.split('/').pop() || 'Recording.mp3';
+    : record.filePath.split('/').pop() || 'Recording.aac';
 
   const isCloudRecord = !!(record.cloudStorageId && record.syncStatus === 'synced');
 

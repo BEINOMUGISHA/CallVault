@@ -38,9 +38,9 @@ class RecordingManager(private val context: Context) {
             return null
         }
 
-        // Generate filename: YYYY-MM-DD_HH-mm-ss.mp3
+        // Generate filename: YYYY-MM-DD_HH-mm-ss.aac
         val timestamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.getDefault()).format(Date())
-        val fileName = "${timestamp}.mp3"
+        val fileName = "${timestamp}.aac"
         val file = File(directory, fileName)
         currentFilePath = file.absolutePath
         currentStartTime = System.currentTimeMillis()
@@ -56,7 +56,7 @@ class RecordingManager(private val context: Context) {
             }.apply {
                 // Use VOICE_RECOGNITION source to record both sides of call on modern Android
                 setAudioSource(MediaRecorder.AudioSource.VOICE_RECOGNITION)
-                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                setOutputFormat(MediaRecorder.OutputFormat.AAC_ADTS)
                 setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
                 setAudioSamplingRate(44100)
                 setAudioEncodingBitRate(128000)

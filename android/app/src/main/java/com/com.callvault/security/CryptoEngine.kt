@@ -104,7 +104,9 @@ object CryptoEngine {
      * or FileProvider sharing. The file is marked for deletion upon exit.
      */
     fun decryptToTempFile(encryptedFile: File, cacheDir: File): File {
-        val tempFile = File.createTempFile("play_", ".mp3", cacheDir)
+        val baseName = encryptedFile.name.removeSuffix(".enc")
+        val ext = if (baseName.contains(".")) ".${baseName.substringAfterLast('.')}" else ".aac"
+        val tempFile = File.createTempFile("play_", ext, cacheDir)
         tempFile.deleteOnExit()
         decryptFile(encryptedFile, tempFile)
         return tempFile

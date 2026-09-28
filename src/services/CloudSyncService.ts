@@ -79,12 +79,12 @@ export class CloudSyncService {
    */
   private static async uploadAndPurgeLocalFile(record: CallRecord, userId: string): Promise<boolean> {
     try {
-      const fileName = record.filePath.split('/').pop() || `call_${record.id}_${Date.now()}.mp3`;
+      const fileName = record.filePath.split('/').pop() || `call_${record.id}_${Date.now()}.aac`;
       const fileUri = Platform.OS === 'android' ? 'file://' + record.filePath : record.filePath;
       const storagePath = `${userId}/${fileName}`;
 
       const isEncrypted = fileName.endsWith('.enc');
-      const mimeType = isEncrypted ? 'application/octet-stream' : 'audio/mpeg';
+      const mimeType = isEncrypted ? 'application/octet-stream' : 'audio/aac';
 
       // 1. Prepare form data binary
       const formData = new FormData();
@@ -118,7 +118,7 @@ export class CloudSyncService {
           phone_number: record.phoneNumber,
           call_type: record.callType,
           audio_path: storagePath,
-          audio_format: isEncrypted ? 'mp3.enc' : 'mp3',
+          audio_format: isEncrypted ? 'aac.enc' : 'aac',
           duration_seconds: record.duration,
           file_size_bytes: record.fileSize,
           start_time: record.startTime,

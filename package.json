@@ -45,10 +45,6 @@
     "react-test-renderer": "19.2.3",
     "typescript": "~6.0.3"
   },
-  "overrides": {
-    "expo-modules-core": "~2.2.0",
-    "expo-modules-autolinking": "~2.1.0"
-  },
   "engines": {
     "node": ">= 22.11.0"
   }
