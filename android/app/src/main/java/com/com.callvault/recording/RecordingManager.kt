@@ -47,34 +47,50 @@ class RecordingManager(private val context: Context) {
 
         Log.d(TAG, "Starting call recording to: $currentFilePath")
 
-        try {
-            mediaRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                MediaRecorder(context)
-            } else {
-                @Suppress("DEPRECATION")
-                MediaRecorder()
-            }.apply {
-                // Use VOICE_RECOGNITION source to record both sides of call on modern Android
-                setAudioSource(MediaRecorder.AudioSource.VOICE_RECOGNITION)
-                setOutputFormat(MediaRecorder.OutputFormat.AAC_ADTS)
-                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-                setAudioSamplingRate(44100)
-                setAudioEncodingBitRate(128000)
-                setOutputFile(file.absolutePath)
-                prepare()
-                start()
+        // Intelligent Audio Source Fallback Ladder to guarantee clear audio across all Android OEMs
+        val audioSources = listOf(
+            MediaRecorder.AudioSource.VOICE_RECOGNITION,
+            MediaRecorder.AudioSource.MIC,
+            MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+            MediaRecorder.AudioSource.DEFAULT
+        )
+
+        for (source in audioSources) {
+            try {
+                mediaRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    MediaRecorder(context)
+                } else {
+                    @Suppress("DEPRECATION")
+                    MediaRecorder()
+                }.apply {
+                    setAudioSource(source)
+                    setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                    setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                    setAudioSamplingRate(44100)
+                    setAudioEncodingBitRate(128000)
+                    setOutputFile(file.absolutePath)
+                    prepare()
+                    start()
+                }
+                isRecording = true
+                Log.d(TAG, "MediaRecorder successfully started using AudioSource: $source")
+                return currentFilePath
+            } catch (e: Exception) {
+                Log.w(TAG, "AudioSource $source failed: ${e.message}. Trying next fallback source...")
+                try {
+                    mediaRecorder?.reset()
+                    mediaRecorder?.release()
+                } catch (re: Exception) {
+                    // Ignore release errors
+                }
+                mediaRecorder = null
             }
-            isRecording = true
-            return currentFilePath
-        } catch (e: Exception) {
-            Log.e(TAG, "Error starting MediaRecorder: ${e.message}", e)
-            mediaRecorder?.reset()
-            mediaRecorder?.release()
-            mediaRecorder = null
-            isRecording = false
-            currentFilePath = null
-            return null
         }
+
+        Log.e(TAG, "All audio sources failed to initialize MediaRecorder.")
+        isRecording = false
+        currentFilePath = null
+        return null
     }
 
     /**
