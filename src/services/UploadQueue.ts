@@ -82,7 +82,7 @@ export class UploadQueue {
   // Flush (Process Queue)
   // ─────────────────────────────────────────────
 
-  static async flush(wifiOnly: boolean = true): Promise<void> {
+  static async flush(wifiOnly: boolean = false): Promise<void> {
     if (UploadQueue.isProcessing) return;
     UploadQueue.isProcessing = true;
 

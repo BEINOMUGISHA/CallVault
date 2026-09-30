@@ -34,7 +34,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   darkMode: true,
   appVisible: true,
   e2eEncryptionEnabled: true,
-  wifiOnlySync: true,
+  wifiOnlySync: false,
   retention: DEFAULT_RETENTION,
   // Cloud & zero-storage
   zeroStorageEnabled: true,

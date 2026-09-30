@@ -362,10 +362,10 @@ export default function SettingsScreen({ navigation }: any) {
               <Text style={styles.settingDesc}>Only upload recordings to Supabase when connected to Wi-Fi</Text>
             </View>
             <Switch
-              value={settings.wifiOnlySync ?? true}
+              value={settings.wifiOnlySync ?? false}
               onValueChange={(v) => updateSettings({ wifiOnlySync: v })}
               trackColor={{ false: '#334155', true: '#2563EB' }}
-              thumbColor={(settings.wifiOnlySync ?? true) ? '#38BDF8' : '#94A3B8'}
+              thumbColor={(settings.wifiOnlySync ?? false) ? '#38BDF8' : '#94A3B8'}
             />
           </View>
 
